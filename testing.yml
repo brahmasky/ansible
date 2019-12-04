@@ -3,7 +3,6 @@
   gather_facts: no
   tasks:
     - name: getting remote script output
-      # hosts: hf
       shell: env -abc
       register: env_response
       ignore_errors: yes
