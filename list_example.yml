@@ -4,30 +4,31 @@
   gather_facts: no
 
   vars:
-    region: ap-southeast-2
-    egress_sg: sg-abc
-    group_ids: ['{{ egress_sg }}']
+    region: "{{ lookup('aws_ssm', '/logit/aws_env/region') }}"
+    egress_sg: "{{ lookup('aws_ssm', '/logit/aws_env/custom_egress_sg') }}"
+    egress_group: ["{{ egress_sg }}"]
+    group_ids: []
 
   tasks:
-    - ec2_metadata_facts:
+    - name: collect ec2 meta data
+      ec2_metadata_facts:
 
-    - ec2_instance_facts:
+    - name: collect ec2 instance details
+      ec2_instance_facts:
         region: '{{ region }}'
         instance_ids:
           - "{{ ansible_ec2_instance_identity_document_instanceid }}"
       register: ec2_info
 
-    # - debug: var=ec2_info
     - set_fact:
-        group_ids_current: "{{ ec2_info.instances.0.security_groups | map(attribute='group_id') | list }} "
+        group_ids_current: "{{ ec2_info.instances.0.security_groups | map(attribute='group_id') | list }}"
 
     - set_fact:
-        group_ids: "{{ group_ids_current | union(group_ids) }}"
-
-#    - set_fact:
-#        group_ids: ec2_info.instances.0.security_groups
-      #  group_ids: "{{ ec2_info.instances.0.security_groups }} | union({{ group_ids }})"
-#        group_ids: "{{ group_ids }} + ['{{ item.group_id }}']"
-#      with_items: '{{ ec2_info.instances.0.security_groups }}'
+        group_ids: "{{ group_ids_current | union(egress_group) }}"
+      when: egress_sg not in group_ids_current
 
     - debug: var=group_ids
+
+    - name: modify instance with SG group ids
+      shell: "/usr/local/bin/aws ec2 modify-instance-attribute --instance-id {{ ansible_ec2_instance_identity_document_instanceid }} --groups {{ group_ids | unique | join(' ') }} --region {{ region }}"
+      when: egress_sg not in group_ids_current
